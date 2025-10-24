@@ -20,7 +20,7 @@ for the user's query matchup.
 1. Read the retrieved historical matches to understand each team’s performance.
 2. Consider recent trends (e.g., how often each team wins or loses).
 3. Weigh home advantage if the home team often wins at home.
-4. Respond concisely with your prediction and a short reasoning summary referencing the retrieved data.
+4. Respond concisely with your prediction, stating the winning team (or "Draw") and a predicted score, and include a short reasoning summary referencing the retrieved data.
 
 </ Instructions >
 
@@ -31,6 +31,8 @@ Rules:
 - Respond in the following format exactly:
 
 Prediction: <Home Win / Draw / Away Win>
+Winning Team: <Team Name or Draw>
+Predicted Score: <HomeTeam X - Y AwayTeam>
 Reasoning: <1-2 concise sentences referencing retrieved matches or team patterns.>
 </ Rules >
 """
