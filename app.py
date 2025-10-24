@@ -18,6 +18,9 @@ if 'is_initialized' not in st.session_state:
     st.session_state.is_initialized = False
 if 'data_file' not in st.session_state:
     st.session_state.data_file = None
+# new flag to start initialization from button click
+if 'start_init' not in st.session_state:
+    st.session_state.start_init = False
 
 def initialize_knowledge_base():
     """Initialize the FAISS index and load the knowledge base"""
@@ -98,32 +101,47 @@ if not st.session_state.is_initialized:
     st.markdown("### 📚 Initialize Knowledge Base")
     st.write("Using the combined leagues dataset for predictions.")
     st.session_state.data_file = 'combined_leagues.csv'
-    
-    if st.session_state.data_file:
-        if st.button("🚀 Initialize Knowledge Base"):
-            if initialize_knowledge_base():
-                st.success("✅ Knowledge base is ready! You can now make predictions.")
-            
+
+    # Button sets a flag; actual long init happens below so Streamlit reruns cleanly
+    if st.button("🚀 Initialize Knowledge Base", key="init_button"):
+        st.session_state.start_init = True
+
+    # When flag is set, perform the initialization once
+    if st.session_state.start_init:
+        succeeded = initialize_knowledge_base()
+        st.session_state.start_init = False
+        if succeeded:
+            st.success("✅ Knowledge base is ready! You can now make predictions.")
 else:
     # Main prediction interface
     st.markdown("### ⚽ Make Predictions")
-    
-    # Get all available teams
-    if st.session_state.predictor and st.session_state.predictor.historical_data_df is not None:
-        all_teams = sorted(list(set(
-            list(st.session_state.predictor.historical_data_df['home_team'].unique()) + 
-            list(st.session_state.predictor.historical_data_df['away_team'].unique())
-        )))
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            home_team = st.selectbox("Home Team", all_teams, index=None)
-            
-        with col2:
-            # Filter out the selected home team from away team options
-            away_teams = [team for team in all_teams if team != home_team] if home_team else all_teams
-            away_team = st.selectbox("Away Team", away_teams, index=None)
+
+    # Initialize selection variables
+    home_team = None
+    away_team = None
+
+    # Show dropdowns only after the knowledge base is initialized
+    if st.session_state.is_initialized and st.session_state.predictor and getattr(st.session_state.predictor, 'historical_data_df', None) is not None:
+        df = st.session_state.predictor.historical_data_df
+
+        # Build team list safely (drop NaNs, cast to str, dedupe, sort)
+        teams_series = pd.concat([
+            df.get('home_team', pd.Series([], dtype=object)),
+            df.get('away_team', pd.Series([], dtype=object))
+        ]).dropna().astype(str)
+        all_teams = sorted(list(pd.unique(teams_series)), key=lambda s: s.lower())
+
+        if not all_teams:
+            st.warning("No teams found in the dataset.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                home_team = st.selectbox("Home Team", all_teams, key="home_team_select")
+            with col2:
+                away_options = [t for t in all_teams if t != home_team] if home_team else all_teams
+                away_team = st.selectbox("Away Team", away_options, key="away_team_select")
+    else:
+        st.info("Initialize the knowledge base to enable team selection and predictions.")
 
     # Prediction button
     if st.button("Get Prediction", disabled=not (home_team and away_team)):
@@ -165,23 +183,115 @@ else:
                     st.markdown("### 📊 Recent Head-to-Head Matches")
                     if hasattr(st.session_state.predictor, 'historical_data_df'):
                         df = st.session_state.predictor.historical_data_df
-                        h2h_matches = df[
+
+                        # Find matches between the two teams
+                        matches_df = df[
                             ((df['home_team'] == home_team) & (df['away_team'] == away_team)) |
                             ((df['home_team'] == away_team) & (df['away_team'] == home_team))
-                        ].sort_values('date', ascending=False).head(5)
-                        
-                        if not h2h_matches.empty:
-                            st.dataframe(
-                                h2h_matches[['date', 'home_team', 'home_score', 'away_score', 'away_team']],
-                                hide_index=True
-                            )
+                        ].copy()
+
+                        # If no matches at all in DB, treat as "no matches in past 3 years"
+                        if matches_df.empty:
+                            st.info(f"No matches between **{home_team}** and **{away_team}** were found in the database. Treating this as no matches in the past 3 years.")
                         else:
-                            st.info("No direct head-to-head matches found in the database.")
+                            # Detect a date-like column
+                            date_col = next((c for c in ['date', 'utcDate', 'utc_date', 'match_date'] if c in matches_df.columns), None)
+                            if date_col:
+                                # parse dates safely and normalize to UTC so comparisons are consistent
+                                matches_df[date_col] = pd.to_datetime(matches_df[date_col], errors='coerce', utc=True)
+                                matches_df = matches_df.sort_values(date_col, ascending=False)
+
+                                # use a UTC-aware cutoff timestamp
+                                three_years_ago = pd.Timestamp.now(tz='UTC') - pd.DateOffset(years=3)
+
+                                recent = matches_df[matches_df[date_col] >= three_years_ago]
+                                if recent.empty:
+                                    st.info(f"No matches between **{home_team}** and **{away_team}** in the past 3 years.")
+                                else:
+                                    st.dataframe(
+                                        recent[[date_col, 'home_team', 'home_score', 'away_score', 'away_team']].head(5),
+                                        hide_index=True
+                                    )
+                            else:
+                                # No date column available — cannot compute recency.
+                                st.info(f"No date information available for historical matches. Treating this as no matches in the past 3 years between **{home_team}** and **{away_team}**.")
             else:
                 st.error("Prediction system not initialized. Please initialize the knowledge base first.")
         except Exception as e:
             st.error(f"Error generating prediction: {str(e)}")
 
-# Footer
+# Footer chatbox - place above footer
+# Initialize chat history state (only once)
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []  # list of dicts: {"role": "user"/"assistant", "text": "..."}
+
+if 'chat_input' not in st.session_state:
+    st.session_state.chat_input = ""
+
+# Callback for sending chat (runs before widget rendering completes)
+def _send_chat_callback():
+    query = st.session_state.get("chat_input", "").strip()
+    if not query:
+        # store a small flag to show an info message after widgets render
+        st.session_state['_chat_info'] = "Please enter a question before sending."
+        return
+
+    # append user message
+    st.session_state.chat_history.append({"role": "user", "text": query})
+
+    # generate assistant reply
+    if st.session_state.get("predictor") is not None and hasattr(st.session_state.predictor, "answer_query"):
+        try:
+            # call predictor (may block; consider running asynchronously if needed)
+            reply = st.session_state.predictor.answer_query(query)
+        except Exception as e:
+            reply = f"Error generating reply: {e}"
+    else:
+        reply = ("Knowledge base not initialized. Please initialize it to enable chat."
+                 if st.session_state.get("predictor") is None
+                 else "Predictor does not implement answer_query(question: str) -> str.")
+
+    st.session_state.chat_history.append({"role": "assistant", "text": reply})
+
+    # clear input (allowed inside callback)
+    st.session_state.chat_input = ""
+    # clear any leftover info flag
+    st.session_state.pop('_chat_info', None)
+
+def _clear_chat_callback():
+    st.session_state.chat_history = []
+    st.session_state.chat_input = ""
+    st.session_state['_chat_cleared'] = True
+
+st.markdown("### 💬 Chat with the Knowledge Base")
+st.write("Ask questions about the dataset, teams, or matches. The chat uses the initialized knowledge base for answers.")
+
+# Single chat input area (unique key 'chat_input')
+st.text_area("Your question", value=st.session_state.chat_input, key="chat_input", height=100, placeholder="Type a question and press Send...")
+
+col1, col2 = st.columns([1, 1])
+with col1:
+    # Use callbacks so session_state changes happen in callbacks (avoids StreamlitDuplicate/modify errors)
+    st.button("Send", key="send_chat", on_click=_send_chat_callback)
+
+with col2:
+    st.button("Clear Chat", key="clear_chat", on_click=_clear_chat_callback)
+
+# Info messages set inside callbacks
+if st.session_state.pop('_chat_info', None):
+    st.info("Please enter a question before sending.")
+if st.session_state.pop('_chat_cleared', None):
+    st.success("Chat cleared.")
+
+# Display chat history
+if st.session_state.chat_history:
+    st.markdown("----")
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"**You:** {msg['text']}")
+        else:
+            st.markdown(f"**Assistant:** {msg['text']}")
+
+# Footer (chat feature removed)
 st.markdown("---")
 st.markdown("Made with ❤️ by Your Team")
