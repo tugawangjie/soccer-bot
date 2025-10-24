@@ -1,7 +1,7 @@
 # ⚽️ Soccer Bot
 
-An LLM-powered soccer chatbot with lightweight RAG (retrieval-augmented generation) over a curated CSV of league data.  
-Ask match or league questions in natural language and get concise answers grounded in the local dataset.
+An **LLM-powered soccer prediction and analysis app** with lightweight RAG (retrieval-augmented generation) over a curated CSV of league data.  
+Instead of a chatbot, the Streamlit UI now provides **dropdown menus** for team selection and a **prediction button** that generates data-grounded match insights.
 
 > Repo structure: `app.py`, `ragv2.py`, `prompts.py`, `combined_leagues.csv`, `requirements.txt`  
 > UI: Streamlit app launched via `streamlit run app.py`.
@@ -10,10 +10,12 @@ Ask match or league questions in natural language and get concise answers ground
 
 ## ✨ Features
 
-- **Chat UI:** Streamlit interface for quick Q&A.  
-- **RAG pipeline:** Looks up relevant rows from `combined_leagues.csv` before answering.  
-- **Prompt presets:** Centralized prompt templates in `prompts.py` for easy tuning.  
-- **Local & API-key friendly:** Runs locally; optional model/API config via environment variables.
+- **Dropdown-based UI:** Select two teams from dropdowns and click **Predict** to generate match insights.  
+- **RAG pipeline:** Retrieves relevant match data from `combined_leagues.csv` before prediction.  
+- **LLM analysis:** The model uses contextual data to provide a clear, natural-language summary of likely outcomes.  
+- **Prompt presets:** Centralized templates in `prompts.py` for tuning tone and logic.  
+- **Local & API-key friendly:** Runs locally; optional model/API config via environment variables.  
+- **Error handling:** If two teams haven’t played in over 3 years, the app displays a friendly message instead of failing.  
 
 ---
 
@@ -71,20 +73,30 @@ Then open the local URL shown in your terminal (usually [http://localhost:8501](
 
 ## 🔎 How It Works
 
-1. **User question →** Streamlit UI (`app.py`) collects the input.  
-2. **Retrieve rows →** `ragv2.py` filters or searches `combined_leagues.csv` for relevant rows (e.g., by team, league, or date).  
-3. **Prompting →** `prompts.py` provides structured system and user prompts. Retrieved snippets are injected as context.  
-4. **LLM answer →** The model generates a grounded response, displayed in the Streamlit interface.
+1. **User selection →** The Streamlit UI presents dropdown menus to choose a **Home Team** and **Away Team**.  
+2. **Data retrieval →** `ragv2.py` filters or searches `combined_leagues.csv` for past results between the two teams.  
+3. **Prompt construction →** `prompts.py` formats a structured prompt including recent match data.  
+4. **Prediction →** The model generates a clear match analysis or prediction when the **“Predict”** button is clicked.  
+5. **Error handling →** If the teams haven’t played in the last 3 years, a message notifies the user instead of producing an error.
 
 ---
 
-## 🧪 Example Queries
+## 🧪 Example Usage
 
-- “Who won the last fixture between Team A and Team B?”  
-- “Show me Team X’s recent results in League Y.”  
-- “What’s the standing summary for League Z?”
+- Select **Team A** and **Team B** from dropdowns.  
+- Click **“Predict”** to generate insights.  
+- Receive a grounded prediction like:  
+  > “Based on recent form and head-to-head data, Team A is favored to win against Team B.”  
 
-> (Responses depend on the contents of `combined_leagues.csv`.)
+---
+
+## 🧩 Improvements & Future Work
+
+- **Prediction clarity:**  
+  The app now generates analysis referring to **specific team names** (e.g., “Manchester City win”) rather than generic results like “Home win” or “Away win.” This helps reduce ambiguity and improve readability.  
+
+- **Enhanced retrieval:**  
+  Future updates may include form weighting, injury data, or additional league stats for more accurate predictions.
 
 ---
 
@@ -92,7 +104,7 @@ Then open the local URL shown in your terminal (usually [http://localhost:8501](
 
 - **Prompts:** Edit tone or logic in `prompts.py`.  
 - **Retrieval:** Adjust similarity or keyword logic in `ragv2.py`.  
-- **Data:** Replace or update `combined_leagues.csv` with your own schema and align retrieval code accordingly.
+- **Data:** Replace or update `combined_leagues.csv` with your own schema and align retrieval code accordingly.  
 
 ---
 
@@ -141,8 +153,8 @@ pip install streamlit
 **.env not loading?**  
 Check that `python-dotenv` is installed and `load_dotenv()` is called in `app.py`.
 
-**Empty or incorrect answers?**  
-Verify that `combined_leagues.csv` exists, has the expected columns, and the retrieval logic matches the data format.
+**No prediction shown?**  
+Ensure both teams are selected and that `combined_leagues.csv` contains recent match data for them.
 
 ---
 
